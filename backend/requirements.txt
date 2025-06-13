@@ -1,0 +1,7 @@
+fastapi==0.110.0
+uvicorn==0.27.1
+supabase==2.3.4
+python-dotenv==1.0.1
+transformers==4.38.1
+google-cloud-securitycenter==1.35.0
+pydantic==2.6.3
