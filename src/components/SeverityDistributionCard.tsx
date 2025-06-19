@@ -1,20 +1,48 @@
 import React, { useEffect, useState } from 'react';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, ChartEvent, ActiveElement } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
+
+// Define types for the Chart.js plugin
+interface ChartModel {
+  startAngle: number;
+  endAngle: number;
+  outerRadius: number;
+  x: number;
+  y: number;
+}
+
+interface ChartDataLabel {
+  x: number;
+  y: number;
+}
+
+interface ChartMeta {
+  data: any[];
+}
+
+interface ChartWithDatalabels extends ChartJS {
+  $datalabels?: ChartDataLabel[];
+  data: {
+    datasets: {
+      backgroundColor: string[];
+      data: number[];
+    }[];
+  };
+}
 
 // Custom plugin for leader lines
 const LeaderLinePlugin = {
   id: 'leaderLinePlugin',
-  afterDatasetDraw(chart, args, options) {
-    const { ctx, chartArea } = chart;
-    const meta = chart.getDatasetMeta(0);
+  afterDatasetDraw(chart: ChartWithDatalabels, _args: any, _options: any) {
+    const { ctx } = chart;
+    const meta = chart.getDatasetMeta(0) as ChartMeta;
     if (!meta || !meta.data) return;
     ctx.save();
-    meta.data.forEach((arc, i) => {
+    meta.data.forEach((arc: any, i: number) => {
       // Only draw for visible arcs with value
       if (!arc || arc.hidden || chart.data.datasets[0].data[i] === 0) return;
       // Get arc center and angle
-      const model = arc.getProps(['startAngle', 'endAngle', 'outerRadius', 'x', 'y'], true);
+      const model = arc.getProps(['startAngle', 'endAngle', 'outerRadius', 'x', 'y'], true) as ChartModel;
       const angle = (model.startAngle + model.endAngle) / 2;
       const arcX = model.x + Math.cos(angle) * model.outerRadius;
       const arcY = model.y + Math.sin(angle) * model.outerRadius;
@@ -30,7 +58,8 @@ const LeaderLinePlugin = {
         labelY = model.y + Math.sin(angle) * (model.outerRadius + 40);
       }
       // Draw line
-      ctx.strokeStyle = chart.data.datasets[0].backgroundColor[i];
+      const backgroundColor = chart.data.datasets[0].backgroundColor as string[];
+      ctx.strokeStyle = backgroundColor[i];
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(arcX, arcY);
@@ -47,7 +76,7 @@ const LeaderLinePlugin = {
         ctx.lineTo(labelX - ux * arrowLength + uy * arrowWidth / 2, labelY - uy * arrowLength - ux * arrowWidth / 2);
         ctx.lineTo(labelX - ux * arrowLength - uy * arrowWidth / 2, labelY - uy * arrowLength + ux * arrowWidth / 2);
         ctx.closePath();
-        ctx.fillStyle = chart.data.datasets[0].backgroundColor[i];
+        ctx.fillStyle = backgroundColor[i];
         ctx.fill();
       }
     });
@@ -168,10 +197,10 @@ const SeverityDistributionCard: React.FC = () => {
     cutout: '75%',
     layout: {
       padding: {
-        top: 30, // Add padding to the top to make space for labels
-        bottom: 20, // Optional: adjust bottom if legend needs space
-        left: 20,
-        right: 20
+        top: 99,
+        bottom: 30,
+        left: 50,
+        right: 50
       }
     },
     animation: {
@@ -233,37 +262,58 @@ const SeverityDistributionCard: React.FC = () => {
       datalabels: {
         offset: function(context: any) {
           const label = context.chart.data.labels[context.dataIndex];
-          if (label === 'CRITICAL') return 5;
-          if (label === 'HIGH') return 15;
-          if (label === 'MEDIUM') return 15;
-          if (label === 'LOW') return 20;
-          return 10; // Default offset
+          if (label === 'CRITICAL') return 50;
+          if (label === 'HIGH') return 45;
+          if (label === 'MEDIUM') return 30;
+          if (label === 'LOW') return 25;
+          return 20;
         },
         backgroundColor: function(context: any) {
-          // Use the arc color for the label background
-          return context.dataset.backgroundColor[context.dataIndex];
+          // Use the arc color for the label background with better opacity
+          const color = context.dataset.backgroundColor[context.dataIndex];
+          return color;
         },
-        borderRadius: 6,
-        padding: 6,
+        borderColor: '#ffffff',
+        borderWidth: 2,
+        borderRadius: 8,
+        padding: {
+          top: 8,
+          bottom: 8,
+          left: 10,
+          right: 10
+        },
         color: '#fff',
         font: {
           weight: 'bold' as const,
-          size: 15,
+          size: 13,
+          family: 'Inter, system-ui, sans-serif'
         },
         textAlign: 'center' as const,
         anchor: 'end' as const,
         align: 'end' as const,
-        clamp: true,
-        shadowBlur: 4,
-        shadowColor: 'rgba(0,0,0,0.18)',
+        clamp: false,
+        shadowBlur: 6,
+        shadowColor: 'rgba(0,0,0,0.25)',
+        shadowOffsetX: 1,
+        shadowOffsetY: 2,
         formatter: function(value: any, context: any) {
           const label = context.chart.data.labels[context.dataIndex];
           const percentage = total === 0 ? 0 : Math.round((value / total) * 100);
-          return value > 0 ? `${label}: ${value} (${percentage}%)` : '';
+          // Improved formatting for better readability
+          return value > 0 ? `${label}\n${value} (${percentage}%)` : '';
         },
         display: function(context: any) {
           return context.dataset.data[context.dataIndex] > 0;
         },
+        listeners: {
+          enter: function(context: any) {
+            // Add hover effect
+            context.element.style.transform = 'scale(1.05)';
+          },
+          leave: function(context: any) {
+            context.element.style.transform = 'scale(1)';
+          }
+        }
       }
     },
   };
@@ -286,7 +336,7 @@ const SeverityDistributionCard: React.FC = () => {
       </div>
       
       {total > 0 ? (
-        <div className="relative h-64">
+        <div className="relative h-96"> {/* Increased from h-80 to h-96 for more vertical space */}
           <Doughnut data={data} options={options} plugins={[ChartDataLabels]} />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className={`text-center p-4 rounded-full ${selectedSeverity ? getSeverityBackground(selectedSeverity) : 'bg-gray-50'} transition-all duration-300 transform ${animateChart ? 'scale-100' : 'scale-0'}`}>

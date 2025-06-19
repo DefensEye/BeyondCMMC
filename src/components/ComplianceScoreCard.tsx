@@ -232,24 +232,9 @@ const ComplianceScoreCard: React.FC = () => {
           <div className="mt-6 pt-4 border-t border-gray-100">
             <div className="flex items-start">
               <div className="flex-shrink-0 mt-1">
-                <div className={`w-4 h-4 rounded-full ${overall_score >= 60 ? 'bg-success-100' : 'bg-warning-100'} flex items-center justify-center`}>
-                  <div className={`w-2 h-2 rounded-full ${overall_score >= 60 ? 'bg-success-500' : 'bg-warning-500'}`}></div>
-                </div>
+                
               </div>
-              <div className="ml-3">
-                <p className="text-xs text-gray-600 leading-tight">
-                  {overall_score >= 60 
-                    ? "Your security posture is good based on AI analysis, but continuous monitoring is recommended." 
-                    : "AI analysis indicates your security posture needs attention. Review the domains with low scores."}
-                </p>
-                <div className="mt-2 flex items-center text-xs text-blue-600">
-                  <Brain className="h-3 w-3 mr-1" />
-                  <span>Enhanced with machine learning insights</span>
-                </div>
-                <p className="mt-2 text-xs text-gray-600 leading-tight">
-                  The scores above are based on the CMMC (Cybersecurity Maturity Model Certification) domains, calculated from security findings across your infrastructure.
-                </p>
-              </div>
+             
             </div>
           </div>
         </div>
