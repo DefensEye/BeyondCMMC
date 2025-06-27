@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { ExternalLink, ChevronDown, ChevronUp, AlertTriangle, AlertOctagon, AlertCircle, Info, Shield, RefreshCw, RotateCcw } from 'lucide-react';
 import { Finding } from '../lib/supabase';
@@ -54,9 +54,11 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [internalSelectedSeverity, setInternalSelectedSeverity] = useState<string>('');
   const [mainBarSelectedCategory, setMainBarSelectedCategory] = useState<string>('');
   const [mainBarSelectedStatus, setMainBarSelectedStatus] = useState<string>('');
+  const [mainBarSelectedDomain, setMainBarSelectedDomain] = useState<string>('');
   // Replace this line:
   // const [showFilters, setShowFilters] = useState(false);
   
@@ -95,8 +97,9 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
   }, [filters]);
   
   // Get unique values for filter dropdowns
-  const uniqueCategories = findings ? [...new Set(findings.map(f => f.category))] : [];
-  const uniqueStatuses = findings ? [...new Set(findings.map(f => f.status))] : [];
+  const uniqueCategories = findings ? [...new Set(findings.map(f => f.category))].filter(Boolean) : [];
+  const uniqueStatuses = findings ? [...new Set(findings.map(f => f.status))].filter(Boolean) : [];
+  const uniqueDomains = findings ? [...new Set(findings.map(f => f.domain))].filter((domain): domain is string => !!domain) : [];
   
   const itemsPerPage = 10;
   
@@ -125,19 +128,49 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
         : [...prev, status]
     );
   };
+
+  const toggleDomainFilter = (domain: string) => {
+    setSelectedDomains(prev => 
+      prev.includes(domain) 
+        ? prev.filter(d => d !== domain) 
+        : [...prev, domain]
+    );
+  };
   
   // Clear all filters
   const clearFilters = () => {
     setInternalSelectedSeverity('');
     setMainBarSelectedCategory('');
     setMainBarSelectedStatus('');
+    setMainBarSelectedDomain('');
     setSelectedCategories([]);
     setSelectedStatuses([]);
+    setSelectedDomains([]);
     setSearchTerm('');
   };
   
   // Show refresh button only if not using external data
   const showRefreshButton = !isExternalData;
+
+  const [domainDropdownOpen, setDomainDropdownOpen] = useState(false);
+  const domainDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (domainDropdownRef.current && !domainDropdownRef.current.contains(event.target as Node)) {
+        setDomainDropdownOpen(false);
+      }
+    }
+    
+    if (domainDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [domainDropdownOpen]);
 
   if (loading && !isExternalData) { // Only show main loading skeleton if fetching from Supabase
     return (
@@ -200,8 +233,12 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
     const statusMatch = mainBarSelectedStatus === ''
       ? (selectedStatuses.length === 0 || (typedFinding.status && selectedStatuses.includes(typedFinding.status)))
       : (typedFinding.status === mainBarSelectedStatus);
+      
+    // Domain match
+    const domainMatch = selectedDomains.length === 0 || 
+      (typedFinding.domain && selectedDomains.includes(typedFinding.domain));
     
-    return searchMatch && severityMatch && categoryMatch && statusMatch;
+    return searchMatch && severityMatch && categoryMatch && statusMatch && domainMatch;
   }) : [];
   
   // Sort findings with safe access to potentially undefined properties
@@ -304,22 +341,63 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
               </select>
             </div>
 
-            {/* Category Filter Dropdown (Main Bar) */}
-            <div>
-              <label htmlFor="main-category-filter" className="sr-only">Category</label>
-              <select
-                id="main-category-filter"
-                value={mainBarSelectedCategory}
-                onChange={(e) => setMainBarSelectedCategory(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 w-full sm:w-auto bg-white"
+            {/* Domain Filter Dropdown (Main Bar) */}
+            <div className="relative" ref={domainDropdownRef}>
+              <label htmlFor="main-domain-filter" className="sr-only">Domain</label>
+              <button
+                id="main-domain-filter"
+                onClick={() => setDomainDropdownOpen(!domainDropdownOpen)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 w-full sm:w-auto bg-white flex items-center justify-between min-w-[180px]"
               >
-                <option value="">All Categories</option>
-                {uniqueCategories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
+                <span>{selectedDomains.length === 0 ? "All Domains" : `${selectedDomains.length} Domain${selectedDomains.length > 1 ? 's' : ''}`}</span>
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </button>
+              
+              {domainDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  <div className="p-2 border-b border-gray-200">
+                    <button 
+                      onClick={() => {
+                        setSelectedDomains([]);
+                        setDomainDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="p-2">
+                    {uniqueDomains.map(domain => (
+                      <div key={domain} className="flex items-center px-3 py-2 hover:bg-gray-100 rounded-md">
+                        <input
+                          type="checkbox"
+                          id={`domain-${domain}`}
+                          checked={selectedDomains.includes(domain)}
+                          onChange={() => {
+                            toggleDomainFilter(domain);
+                          }}
+                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        />
+                        <label
+                          htmlFor={`domain-${domain}`}
+                          className="ml-2 block text-sm text-gray-700 cursor-pointer w-full"
+                        >
+                          {domain}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-2 border-t border-gray-200 flex justify-end">
+                    <button
+                      onClick={() => setDomainDropdownOpen(false)}
+                      className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-
 
             {/* Search Input */}
             <div className="relative">
@@ -428,6 +506,26 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Domain Filter */}
+            <div className="md:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Domain</label>
+              <div className="max-h-40 overflow-y-auto space-y-1 pr-2 grid grid-cols-1 md:grid-cols-2 gap-1">
+                {uniqueDomains.map(domain => (
+                  <button
+                    key={domain}
+                    onClick={() => toggleDomainFilter(domain)}
+                    className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors duration-150 flex items-center justify-between
+                      ${selectedDomains.includes(domain) 
+                        ? 'bg-primary-100 text-primary-700 font-semibold'
+                        : 'text-gray-600 hover:bg-gray-100'}`}
+                  >
+                    {domain}
+                    {selectedDomains.includes(domain) && <Shield className="h-4 w-4 text-primary-600" />}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="mt-6 pt-4 border-t border-gray-200 flex justify-between items-center">
             <div className="text-sm text-gray-600">
@@ -472,7 +570,17 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
                   )}
                 </button>
               </th>
-              {/* Remove the Last Observed column header */}
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <button 
+                  className="flex items-center focus:outline-none"
+                  onClick={() => toggleSort('domain')}
+                >
+                  Domain
+                  {sortField === 'domain' && (
+                    sortDirection === 'asc' ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />
+                  )}
+                </button>
+              </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
@@ -499,7 +607,9 @@ const FindingsTable: React.FC<FindingsTableProps> = ({
                       {finding.resource_name}
                     </div>
                   </td>
-                  {/* Remove the Last Observed cell */}
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-900">{finding.domain || "Not Classified"}</div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {finding.remediation_url ? (
                       <a

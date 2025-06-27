@@ -25,6 +25,7 @@ export interface Finding {
   last_observed: string;
   status: string;
   remediation_url?: string;
+  domain?: string;
 }
 
 export interface ComplianceScore {
@@ -57,6 +58,15 @@ export const fetchFindings = async (): Promise<Finding[]> => {
       .order('severity', { ascending: false });
     
     if (error) throw error;
+    
+    if (data) {
+      data.forEach(finding => {
+        if (!finding.domain) {
+          finding.domain = getCategoryFromFinding(finding);
+        }
+      });
+    }
+    
     return data || [];
   } catch (error) {
     console.error('Error fetching findings:', error);
