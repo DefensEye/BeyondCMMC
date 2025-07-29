@@ -3,17 +3,26 @@ import ComplianceScoreCard from '../components/ComplianceScoreCard';
 import SeverityDistributionCard from '../components/SeverityDistributionCard';
 import FindingsTable from '../components/FindingsTable';
 import { useSupabase } from '../contexts/SupabaseContext';
-import { Shield, ArrowRight, Clock, RefreshCw, FileText, Download } from 'lucide-react';
+import { Shield, ArrowRight, Clock, RefreshCw, FileText, Download, X, Maximize2, Minimize2, Copy, CheckCircle } from 'lucide-react';
 import { HfInference } from '@huggingface/inference';
 import html2pdf from 'html2pdf.js';
+import { ComplianceScore } from '../lib/supabase';
 
 const Dashboard: React.FC = () => {
-  const { loading, findings } = useSupabase();
+  const { loading, findings, complianceScore } = useSupabase();
   const [animateIn, setAnimateIn] = useState(false);
   const [isGeneratingSSP, setIsGeneratingSSP] = useState(false);
   const [generatedSSP, setGeneratedSSP] = useState<string | null>(null);
   const [isGeneratingCMMC, setIsGeneratingCMMC] = useState(false);
   const [generatedCMMCPolicies, setGeneratedCMMCPolicies] = useState<string | null>(null);
+  
+  // New state for popup modals
+  const [showSSPModal, setShowSSPModal] = useState(false);
+  const [showCMMCModal, setShowCMMCModal] = useState(false);
+  const [isSSPMaximized, setIsSSPMaximized] = useState(false);
+  const [isCMMCMaximized, setIsCMMCMaximized] = useState(false);
+  const [copiedSSP, setCopiedSSP] = useState(false);
+  const [copiedCMMC, setCopiedCMMC] = useState(false);
   
   useEffect(() => {
     // Trigger animations after component mounts
@@ -28,8 +37,25 @@ const Dashboard: React.FC = () => {
     day: 'numeric'
   });
 
+  // Copy to clipboard function
+  const copyToClipboard = async (text: string, type: 'SSP' | 'CMMC') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'SSP') {
+        setCopiedSSP(true);
+        setTimeout(() => setCopiedSSP(false), 2000);
+      } else {
+        setCopiedCMMC(true);
+        setTimeout(() => setCopiedCMMC(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
   const generateSSP = async () => {
     setIsGeneratingSSP(true);
+    setShowSSPModal(true);
     try {
       // Initialize Hugging Face client
       const apiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
@@ -48,51 +74,42 @@ const Dashboard: React.FC = () => {
         domain: finding.domain || 'General'
       }));
       
-      // Group findings by severity and domain for better context
       const criticalFindings = findingsContext.filter(f => f.severity === 'CRITICAL');
       const highFindings = findingsContext.filter(f => f.severity === 'HIGH');
       const mediumFindings = findingsContext.filter(f => f.severity === 'MEDIUM');
       const lowFindings = findingsContext.filter(f => f.severity === 'LOW');
       
-      // Create RAG context prompt
-      const ragContext = `
-Security Findings Analysis:
-- Critical Issues (${criticalFindings.length}): ${criticalFindings.map(f => f.description).join('; ')}
-- High Priority Issues (${highFindings.length}): ${highFindings.map(f => f.description).join('; ')}
-- Medium Priority Issues (${mediumFindings.length}): ${mediumFindings.map(f => f.description).join('; ')}
-- Low Priority Issues (${lowFindings.length}): ${lowFindings.map(f => f.description).join('; ')}
-
-Domains Affected: ${[...new Set(findingsContext.map(f => f.domain))].join(', ')}
-Total Findings: ${findings.length}
-`;
+      // Create a comprehensive prompt for SSP generation
+      const prompt = `Generate a comprehensive System Security Plan (SSP) based on the following security findings analysis:
       
-      const prompt = `Based on the following security findings from our system scan, generate a comprehensive System Security Plan (SSP) document that addresses the identified vulnerabilities and provides a roadmap for remediation.
-
-${ragContext}
-
-Please generate an SSP that includes:
-1. Executive Summary
-2. Current Security Posture Assessment
-3. Risk Analysis based on findings
-4. Remediation Strategy and Timeline
-5. Implementation Plan
-6. Monitoring and Compliance Framework
-7. Resource Requirements
-
-Format the response as a professional SSP document with clear sections and actionable recommendations.`;
+      Total Security Findings: ${findings.length}
+      Critical Issues: ${criticalFindings.length}
+      High Priority Issues: ${highFindings.length}
+      Medium Priority Issues: ${mediumFindings.length}
+      Low Priority Issues: ${lowFindings.length}
       
-      // Try using Hugging Face models that are available via the free API
-      // Use text generation models that are actually supported
+      Key Security Domains Affected: ${[...new Set(findingsContext.map(f => f.domain))].join(', ')}
+      
+      Please generate a professional SSP that includes:
+      1. Executive Summary
+      2. Current Security Posture Assessment
+      3. Risk Analysis and Mitigation Strategies
+      4. Implementation Timeline
+      5. Resource Requirements
+      6. Monitoring and Compliance Framework
+      
+      Focus on actionable recommendations and industry best practices.`;
+      
+      // Try multiple models for better reliability
       const models = [
-        "HuggingFaceH4/zephyr-7b-beta",
-        "mistralai/Mistral-7B-Instruct-v0.1",
-        "microsoft/DialoGPT-medium",
-        "google/flan-t5-base"
+        'microsoft/DialoGPT-large',
+        'microsoft/DialoGPT-medium',
+        'gpt2'
       ];
       
-      let response;
-      let lastError;
-      let modelUsed = null;
+      let response: any = null;
+      let modelUsed = '';
+      let lastError: any = null;
       
       for (const model of models) {
         try {
@@ -182,7 +199,7 @@ Format the response as a professional SSP document with clear sections and actio
 
   const generateTemplateSSP = (findingsContext: any[], criticalFindings: any[], highFindings: any[], mediumFindings: any[], lowFindings: any[]) => {
     const currentDate = new Date().toLocaleDateString();
-    const domains = [...new Set(findingsContext.map(f => f.domain))];
+    const domains = Object.keys(complianceScore?.category_scores || {});
     
     return `
 SYSTEM SECURITY PLAN (SSP)
@@ -199,53 +216,53 @@ Total Security Findings: ${findings.length}
 
 Severity Breakdown:
 - Critical Priority: ${criticalFindings.length} issues
-- High Priority: ${highFindings.length} issues  
+- High Priority: ${highFindings.length} issues
 - Medium Priority: ${mediumFindings.length} issues
 - Low Priority: ${lowFindings.length} issues
 
-RISK ANALYSIS
-=============
-${criticalFindings.length > 0 ? `
-CRITICAL RISKS:
-${criticalFindings.map((f, i) => `${i+1}. ${f.description} (Resource: ${f.resource})`).join('\n')}
-` : 'No critical risks identified.'}
+RISK ANALYSIS AND MITIGATION STRATEGIES
+======================================
 
-${highFindings.length > 0 ? `
-HIGH PRIORITY RISKS:
-${highFindings.slice(0, 5).map((f, i) => `${i+1}. ${f.description} (Resource: ${f.resource})`).join('\n')}
-${highFindings.length > 5 ? `... and ${highFindings.length - 5} additional high priority issues` : ''}
-` : 'No high priority risks identified.'}
+CRITICAL RISK MITIGATION (Immediate Action Required)
+- Implement emergency patches for critical vulnerabilities
+- Establish incident response procedures
+- Deploy additional monitoring and alerting systems
+- Conduct immediate security assessments
 
-REMEDIATION STRATEGY AND TIMELINE
-=================================
-Phase 1 (Immediate - 0-30 days):
-- Address all Critical severity findings
-- Implement emergency security controls
-- Conduct vulnerability assessments
+HIGH PRIORITY REMEDIATION (Within 30 Days)
+- Address configuration management issues
+- Strengthen access control mechanisms
+- Implement comprehensive audit logging
+- Deploy security hardening measures
 
-Phase 2 (Short-term - 30-90 days):  
-- Remediate High priority findings
-- Strengthen access controls
-- Enhance monitoring capabilities
+MEDIUM PRIORITY IMPROVEMENTS (Within 90 Days)
+- Enhance security awareness training
+- Implement automated compliance monitoring
+- Establish regular vulnerability assessments
+- Deploy advanced threat detection systems
 
-Phase 3 (Medium-term - 90-180 days):
-- Address Medium priority findings
-- Implement security awareness training
-- Conduct security reviews
+LOW PRIORITY ENHANCEMENTS (Within 180 Days)
+- Optimize security processes and procedures
+- Implement additional security controls
+- Enhance documentation and reporting
+- Conduct comprehensive security reviews
 
-Phase 4 (Long-term - 180+ days):
-- Address Low priority findings
-- Continuous improvement initiatives
-- Regular security assessments
+IMPLEMENTATION TIMELINE
+======================
+Phase 1 (0-30 days): Critical and High Priority Issues
+- Emergency response and critical patches
+- Access control improvements
+- Audit system implementation
 
-IMPLEMENTATION PLAN
-===================
-1. Establish Security Remediation Team
-2. Prioritize findings based on risk assessment
-3. Allocate resources for immediate critical issues
-4. Implement monitoring and alerting systems
-5. Develop incident response procedures
-6. Create documentation and training materials
+Phase 2 (30-90 days): Medium Priority Issues
+- Security training and awareness programs
+- Automated monitoring deployment
+- Process improvements
+
+Phase 3 (90-180 days): Low Priority and Optimization
+- Advanced security controls
+- Comprehensive documentation
+- Long-term security strategy
 
 MONITORING AND COMPLIANCE FRAMEWORK
 ===================================
@@ -305,6 +322,7 @@ For questions regarding this SSP, please contact the Security Team.
 
   const generateCMMCLevel2Policies = async () => {
     setIsGeneratingCMMC(true);
+    setShowCMMCModal(true);
     try {
       // Initialize Hugging Face client
       const apiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
@@ -327,25 +345,32 @@ For questions regarding this SSP, please contact the Security Team.
       const cmmcDomains = [...new Set(findingsContext.map(f => f.domain))];
       
       // Create CMMC Level 2 specific prompt
-      const cmmcPrompt = `Based on the following security findings, generate CMMC Level 2 specific policies and controls that address the identified vulnerabilities. Focus on the 17 CMMC domains and provide actionable policy recommendations.
-
-Security Findings Summary:
-- Total Findings: ${findings.length}
-- CMMC Domains Affected: ${cmmcDomains.join(', ')}
-- Critical Issues: ${findingsContext.filter(f => f.severity === 'CRITICAL').length}
-- High Priority Issues: ${findingsContext.filter(f => f.severity === 'HIGH').length}
-
-Generate comprehensive CMMC Level 2 policies that include:
-1. Access Control (AC) policies
-2. Audit and Accountability (AU) requirements
-3. Configuration Management (CM) procedures
-4. Identification and Authentication (IA) controls
-5. System and Communications Protection (SC) measures
-6. System and Information Integrity (SI) safeguards
-7. Risk Assessment (RA) protocols
-8. Security Assessment (CA) procedures
-
-For each domain, provide specific policy statements, implementation guidance, and compliance requirements aligned with CMMC Level 2 standards.`;
+      // Update the cmmcPrompt to include all 14 domains
+      const cmmcPrompt = `Based on the following security findings, generate CMMC Level 2 specific policies and controls that address the identified vulnerabilities. Focus on the 14 CMMC domains and provide actionable policy recommendations.
+      
+      Security Findings Summary:
+      - Total Findings: ${findings.length}
+      - CMMC Domains Affected: ${cmmcDomains.join(', ')}
+      - Critical Issues: ${findingsContext.filter(f => f.severity === 'CRITICAL').length}
+      - High Priority Issues: ${findingsContext.filter(f => f.severity === 'HIGH').length}
+      
+      Generate comprehensive CMMC Level 2 policies that include:
+      1. Access Control (AC) policies
+      2. Audit and Accountability (AU) requirements
+      3. Configuration Management (CM) procedures
+      4. Identification and Authentication (IA) controls
+      5. Incident Response (IR) procedures
+      6. Maintenance (MA) guidelines
+      7. Media Protection (MP) controls
+      8. Physical Protection (PE) measures
+      9. Recovery (RE) procedures
+      10. Risk Assessment (RA) protocols
+      11. Security Assessment (CA) procedures
+      12. System and Communications Protection (SC) measures
+      13. System and Information Integrity (SI) safeguards
+      14. Situational Awareness (SA) protocols
+      
+      For each domain, provide specific policy statements, implementation guidance, and compliance requirements aligned with CMMC Level 2 standards.`;
       
       try {
         const response = await hf.textGeneration({
@@ -359,10 +384,10 @@ For each domain, provide specific policy statements, implementation guidance, an
           }
         });
         
-        setGeneratedCMMCPolicies(response.generated_text || generateTemplateCMMCPolicies(findingsContext, cmmcDomains));
+        setGeneratedCMMCPolicies(response.generated_text || generateTemplateCMMCPolicies(findingsContext, cmmcDomains, complianceScore));
       } catch (hfError) {
         console.warn('Hugging Face API failed, using template:', hfError);
-        setGeneratedCMMCPolicies(generateTemplateCMMCPolicies(findingsContext, cmmcDomains));
+        setGeneratedCMMCPolicies(generateTemplateCMMCPolicies(findingsContext, cmmcDomains, complianceScore));
       }
       
     } catch (error) {
@@ -373,7 +398,7 @@ For each domain, provide specific policy statements, implementation guidance, an
     }
   };
 
-  const generateTemplateCMMCPolicies = (findingsContext: any[], cmmcDomains: string[]) => {
+  const generateTemplateCMMCPolicies = (findingsContext: any[], cmmcDomains: string[], complianceScore: ComplianceScore | null) => {
     const currentDate = new Date().toLocaleDateString();
     
     return `
@@ -384,9 +409,12 @@ EXECUTIVE SUMMARY
 ================
 This document outlines CMMC Level 2 security policies tailored to address ${findings.length} security findings across ${cmmcDomains.length} CMMC domains. These policies are designed to meet CMMC Level 2 requirements for protecting Controlled Unclassified Information (CUI).
 
-AFFECTED CMMC DOMAINS
-====================
-${cmmcDomains.map(domain => `• ${domain}`).join('\n')}
+CMMC DOMAINS COMPLIANCE STATUS
+============================
+${complianceScore ? Object.entries(complianceScore.category_scores)
+    .sort((a, b) => a[1] - b[1]) // Sort by compliance score from low to high
+    .map(([domain, score]) => `• ${domain}: ${score === 100 ? 'Not Applicable' : `${score}% compliant`}`)
+    .join('\n') : 'Compliance data not available'}
 
 CMMC LEVEL 2 POLICY REQUIREMENTS
 ================================
@@ -442,43 +470,68 @@ IA.L2-3.5.2: Authenticate the identities of users, processes, and devices
 5. SYSTEM AND COMMUNICATIONS PROTECTION (SC) POLICIES
 -----------------------------------------------------
 SC.L2-3.13.1: Monitor, control, and protect organizational communications
-• Network traffic monitoring
-• Communication encryption requirements
-• Boundary protection controls
+• Network monitoring procedures
+• Communication security controls
+• Data transmission protection
 
-SC.L2-3.13.2: Implement architectural designs, software development techniques, and systems engineering principles
-• Secure architecture principles
-• Defense-in-depth strategy
+SC.L2-3.13.2: Implement subnetworks for publicly accessible system components
 • Network segmentation requirements
+• DMZ configuration standards
+• Public-facing system protection
 
-6. SYSTEM AND INFORMATION INTEGRITY (SI) POLICIES
--------------------------------------------------
+13. SYSTEM AND INFORMATION INTEGRITY (SI) POLICIES
+--------------------------------------------------
 SI.L2-3.14.1: Identify, report, and correct information and information system flaws
-• Vulnerability management program
-• Patch management procedures
-• Flaw remediation timelines
+• Flaw identification procedures
+• Reporting requirements
+• Correction timelines and procedures
 
 SI.L2-3.14.2: Provide protection from malicious code
-• Anti-malware solution deployment
+• Anti-malware solution requirements
 • Malware detection and response
-• Code integrity verification
+• System protection measures
+
+14. SITUATIONAL AWARENESS (SA) POLICIES
+---------------------------------------
+SA.L2-3.11.1: Employ automated mechanisms to centrally apply configuration settings
+• Centralized configuration management
+• Automated deployment procedures
+• Configuration compliance monitoring
+
+SA.L2-3.11.2: Employ automated mechanisms to maintain an up-to-date, complete, accurate, and readily available inventory
+• Automated asset discovery
+• Inventory management systems
+• Real-time asset tracking
 
 IMPLEMENTATION TIMELINE
 ======================
-Phase 1 (0-30 days): Critical and High priority findings
-Phase 2 (30-60 days): Medium priority findings and policy documentation
-Phase 3 (60-90 days): Low priority findings and compliance validation
+Phase 1 (0-90 days): Foundation Controls
+- Access Control implementation
+- Audit and Accountability systems
+- Basic Configuration Management
+
+Phase 2 (90-180 days): Advanced Controls
+- Incident Response capabilities
+- Risk Assessment procedures
+- Security Assessment programs
+
+Phase 3 (180-365 days): Optimization
+- Advanced monitoring and protection
+- Comprehensive testing and validation
+- Continuous improvement processes
 
 COMPLIANCE MONITORING
 ====================
-• Monthly compliance assessments
-• Quarterly policy reviews
-• Annual CMMC readiness evaluations
-• Continuous monitoring and improvement
+- Monthly compliance assessments
+- Quarterly security reviews
+- Annual CMMC readiness evaluations
+- Continuous monitoring and reporting
+- Regular third-party assessments
 
-This policy framework ensures alignment with CMMC Level 2 requirements while addressing the specific security findings identified in your environment.`;
+For questions regarding these CMMC Level 2 policies, please contact the Compliance Team.
+    `.trim();
   };
-
+  
   const downloadCMMCPolicies = () => {
     if (!generatedCMMCPolicies) return;
     
@@ -510,6 +563,182 @@ This policy framework ensures alignment with CMMC Level 2 requirements while add
     });
   };
 
+  // Modal Component for SSP
+  const SSPModal = () => (
+    <div className={`fixed inset-0 z-50 overflow-hidden transition-all duration-300 ${showSSPModal ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={() => setShowSSPModal(false)} />
+      <div className={`absolute ${isSSPMaximized ? 'inset-4' : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 max-w-6xl h-5/6'} bg-white rounded-2xl shadow-2xl transition-all duration-300 ${showSSPModal ? 'scale-100' : 'scale-95'} flex flex-col`}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-2xl flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <FileText className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">System Security Plan</h2>
+              <p className="text-sm text-gray-600">Generated on {new Date().toLocaleDateString()}</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isGeneratingSSP && (
+              <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 rounded-full">
+                <RefreshCw className="h-4 w-4 text-blue-600 animate-spin" />
+                <span className="text-sm font-medium text-blue-600">Generating...</span>
+              </div>
+            )}
+            {generatedSSP && (
+              <>
+                <button
+                  onClick={() => copyToClipboard(generatedSSP, 'SSP')}
+                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Copy to clipboard"
+                >
+                  {copiedSSP ? <CheckCircle className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5" />}
+                </button>
+                <button
+                  onClick={downloadSSP}
+                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Download PDF"
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => setIsSSPMaximized(!isSSPMaximized)}
+              className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title={isSSPMaximized ? 'Minimize' : 'Maximize'}
+            >
+              {isSSPMaximized ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={() => setShowSSPModal(false)}
+              className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Content */}
+        <div className="flex-1 overflow-hidden min-h-0">
+          {isGeneratingSSP ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <RefreshCw className="h-12 w-12 text-blue-600 animate-spin mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Generating Your Security Plan</h3>
+                <p className="text-gray-600">Please wait while we analyze your security findings and create a comprehensive SSP...</p>
+              </div>
+            </div>
+          ) : generatedSSP ? (
+            <div className="h-full p-6 overflow-y-auto">
+              <div className="bg-gray-50 rounded-xl p-6">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">{generatedSSP}</pre>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No SSP Generated Yet</h3>
+                <p className="text-gray-600">Click the Generate SSP button to create your security plan.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Modal Component for CMMC Policies
+  const CMMCModal = () => (
+    <div className={`fixed inset-0 z-50 overflow-hidden transition-all duration-300 ${showCMMCModal ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={() => setShowCMMCModal(false)} />
+      <div className={`absolute ${isCMMCMaximized ? 'inset-4' : 'top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 max-w-6xl h-5/6'} bg-white rounded-2xl shadow-2xl transition-all duration-300 ${showCMMCModal ? 'scale-100' : 'scale-95'} flex flex-col`}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-2xl flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <Shield className="h-6 w-6 text-green-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">CMMC Level 2 Security Policies</h2>
+              <p className="text-sm text-gray-600">Generated on {new Date().toLocaleDateString()}</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isGeneratingCMMC && (
+              <div className="flex items-center space-x-2 px-3 py-1 bg-green-100 rounded-full">
+                <RefreshCw className="h-4 w-4 text-green-600 animate-spin" />
+                <span className="text-sm font-medium text-green-600">Generating...</span>
+              </div>
+            )}
+            {generatedCMMCPolicies && (
+              <>
+                <button
+                  onClick={() => copyToClipboard(generatedCMMCPolicies, 'CMMC')}
+                  className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                  title="Copy to clipboard"
+                >
+                  {copiedCMMC ? <CheckCircle className="h-5 w-5 text-green-600" /> : <Copy className="h-5 w-5" />}
+                </button>
+                <button
+                  onClick={downloadCMMCPolicies}
+                  className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                  title="Download PDF"
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => setIsCMMCMaximized(!isCMMCMaximized)}
+              className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+              title={isCMMCMaximized ? 'Minimize' : 'Maximize'}
+            >
+              {isCMMCMaximized ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={() => setShowCMMCModal(false)}
+              className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Content */}
+        <div className="flex-1 overflow-hidden min-h-0">
+          {isGeneratingCMMC ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <RefreshCw className="h-12 w-12 text-green-600 animate-spin mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Generating CMMC Policies</h3>
+                <p className="text-gray-600">Please wait while we create comprehensive CMMC Level 2 security policies...</p>
+              </div>
+            </div>
+          ) : generatedCMMCPolicies ? (
+            <div className="h-full p-6 overflow-y-auto">
+              <div className="bg-gray-50 rounded-xl p-6">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">{generatedCMMCPolicies}</pre>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No CMMC Policies Generated Yet</h3>
+                <p className="text-gray-600">Click the CMMC Policies button to create your compliance policies.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       {/* Dashboard Header */}
@@ -531,7 +760,7 @@ This policy framework ensures alignment with CMMC Level 2 requirements while add
             <button
               onClick={generateSSP}
               disabled={isGeneratingSSP || findings.length === 0}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transform hover:scale-105"
             >
               {isGeneratingSSP ? (
                 <>
@@ -550,7 +779,7 @@ This policy framework ensures alignment with CMMC Level 2 requirements while add
             <button
               onClick={generateCMMCLevel2Policies}
               disabled={isGeneratingCMMC || findings.length === 0}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              className="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transform hover:scale-105"
             >
               {isGeneratingCMMC ? (
                 <>
@@ -581,44 +810,6 @@ This policy framework ensures alignment with CMMC Level 2 requirements while add
           </div>
         </div>
       </div>
-      
-      {/* Generated SSP Display */}
-      {generatedSSP && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Generated System Security Plan</h2>
-            <button
-              onClick={downloadSSP}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Download SSP
-            </button>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-            <pre className="whitespace-pre-wrap text-sm text-gray-800">{generatedSSP}</pre>
-          </div>
-        </div>
-      )}
-
-      {/* Generated CMMC Level 2 Policies Display */}
-      {generatedCMMCPolicies && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">CMMC Level 2 Security Policies</h2>
-            <button
-              onClick={downloadCMMCPolicies}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Download Policies
-            </button>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-            <pre className="whitespace-pre-wrap text-sm text-gray-800">{generatedCMMCPolicies}</pre>
-          </div>
-        </div>
-      )}
 
       {/* Main Cards */}
       <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-all duration-500 delay-200 ${animateIn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
@@ -649,6 +840,10 @@ This policy framework ensures alignment with CMMC Level 2 requirements while add
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <SSPModal />
+      <CMMCModal />
     </div>
   );
 };

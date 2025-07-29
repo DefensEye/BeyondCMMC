@@ -35,10 +35,16 @@ export interface ComplianceScore {
     "Audit and Accountability (AU)": number;
     "Configuration Management (CM)": number;
     "Identification and Authentication (IA)": number;
-    "System and Communications Protection (SC)": number;
-    "System and Information Integrity (SI)": number;
+    "Incident Response (IR)": number;
+    "Maintenance (MA)": number;
+    "Media Protection (MP)": number;
+    "Physical Protection (PE)": number;
+    "Recovery (RE)": number;
     "Risk Assessment (RA)": number;
     "Security Assessment (CA)": number;
+    "System and Communications Protection (SC)": number;
+    "System and Information Integrity (SI)": number;
+    "Situational Awareness (SA)": number;
   };
   last_updated: string;
 }
@@ -143,10 +149,16 @@ const calculateComplianceScore = (findings: Finding[]): ComplianceScore => {
     "Audit and Accountability (AU)": { count: 0, weight: 0 },
     "Configuration Management (CM)": { count: 0, weight: 0 },
     "Identification and Authentication (IA)": { count: 0, weight: 0 },
+    "Incident Response (IR)": { count: 0, weight: 0 },
+    "Maintenance (MA)": { count: 0, weight: 0 },
+    "Media Protection (MP)": { count: 0, weight: 0 },
+    "Physical Protection (PE)": { count: 0, weight: 0 },
+    "Recovery (RE)": { count: 0, weight: 0 },
+    "Risk Assessment (RA)": { count: 0, weight: 0 },
+    "Security Assessment (CA)": { count: 0, weight: 0 },
     "System and Communications Protection (SC)": { count: 0, weight: 0 },
     "System and Information Integrity (SI)": { count: 0, weight: 0 },
-    "Risk Assessment (RA)": { count: 0, weight: 0 },
-    "Security Assessment (CA)": { count: 0, weight: 0 }
+    "Situational Awareness (SA)": { count: 0, weight: 0 }
   };
 
   findings.forEach(finding => {
@@ -167,10 +179,16 @@ const calculateComplianceScore = (findings: Finding[]): ComplianceScore => {
       "Audit and Accountability (AU)": calculateCategoryScore(categoryScores["Audit and Accountability (AU)"]),
       "Configuration Management (CM)": calculateCategoryScore(categoryScores["Configuration Management (CM)"]),
       "Identification and Authentication (IA)": calculateCategoryScore(categoryScores["Identification and Authentication (IA)"]),
+      "Incident Response (IR)": calculateCategoryScore(categoryScores["Incident Response (IR)"]),
+      "Maintenance (MA)": calculateCategoryScore(categoryScores["Maintenance (MA)"]),
+      "Media Protection (MP)": calculateCategoryScore(categoryScores["Media Protection (MP)"]),
+      "Physical Protection (PE)": calculateCategoryScore(categoryScores["Physical Protection (PE)"]),
+      "Recovery (RE)": calculateCategoryScore(categoryScores["Recovery (RE)"]),
+      "Risk Assessment (RA)": calculateCategoryScore(categoryScores["Risk Assessment (RA)"]),
+      "Security Assessment (CA)": calculateCategoryScore(categoryScores["Security Assessment (CA)"]),
       "System and Communications Protection (SC)": calculateCategoryScore(categoryScores["System and Communications Protection (SC)"]),
       "System and Information Integrity (SI)": calculateCategoryScore(categoryScores["System and Information Integrity (SI)"]),
-      "Risk Assessment (RA)": calculateCategoryScore(categoryScores["Risk Assessment (RA)"]),
-      "Security Assessment (CA)": calculateCategoryScore(categoryScores["Security Assessment (CA)"])
+      "Situational Awareness (SA)": calculateCategoryScore(categoryScores["Situational Awareness (SA)"])
     },
     last_updated: new Date().toISOString()
   };

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Bell, X, Shield, RefreshCw, ChevronDown, Settings, User, LogOut, Search } from 'lucide-react';
+import { Menu, Bell, X, Shield, RefreshCw, ChevronDown, Settings, User, LogOut, Search, MessageCircle } from 'lucide-react';
 import { useSupabase } from '../contexts/SupabaseContext';
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;
+  onChatToggle: () => void;
+  isChatOpen: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
+const Header: React.FC<HeaderProps> = ({ setSidebarOpen, onChatToggle, isChatOpen }) => {
   const { complianceScore, refreshData, loading } = useSupabase();
   const [showNotification, setShowNotification] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -95,6 +97,22 @@ const Header: React.FC<HeaderProps> = ({ setSidebarOpen }) => {
               aria-label="Refresh data"
             >
               <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin text-primary-500' : ''}`} />
+            </button>
+            
+            {/* Chat Toggle Button */}
+            <button
+              onClick={onChatToggle}
+              className={`p-2 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 relative ${
+                isChatOpen 
+                  ? 'bg-primary-100 text-primary-600 hover:bg-primary-200' 
+                  : 'text-gray-500 hover:text-primary-600 hover:bg-gray-100'
+              }`}
+              aria-label={isChatOpen ? 'Close chat' : 'Open chat'}
+            >
+              <MessageCircle className="h-5 w-5" />
+              {!isChatOpen && (
+                <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full bg-primary-500 ring-2 ring-white animate-pulse"></span>
+              )}
             </button>
             
             <div className="relative">
