@@ -204,6 +204,16 @@ const getCategoryFromFinding = (finding: Finding): keyof ComplianceScore['catego
   const category = finding.category.toLowerCase();
   const description = (finding.description || '').toLowerCase();
   
+  // Special case handling for leaked credentials
+  if (category.includes('account_has_leaked_credentials') || 
+      description.includes('leaked credential') || 
+      description.includes('password leak') || 
+      description.includes('credential leak') || 
+      description.includes('account compromise') || 
+      (description.includes('credential') && description.includes('leak'))) {
+    return "Identification and Authentication (IA)";
+  }
+  
   // Map to CMMC domains based on finding category and description
   if (category.includes('iam') || 
       category.includes('identity') || 
